@@ -350,6 +350,8 @@ export class OidcClient {
     // (undocumented)
     processSignoutResponse(url: string): Promise<SignoutResponse>;
     // (undocumented)
+    processTokenExchange({ requestedSubject, subjectToken, skipUserInfo, extraTokenParams, }: ProcessTokenExchangeArgs): Promise<SigninResponse>;
+    // (undocumented)
     readSigninResponseState(url: string, removeState?: boolean): Promise<{
         state: SigninState;
         response: SigninResponse;
@@ -592,6 +594,14 @@ export interface PopupWindowParams {
 export type ProcessResourceOwnerPasswordCredentialsArgs = {
     username: string;
     password: string;
+    skipUserInfo?: boolean;
+    extraTokenParams?: Record<string, unknown>;
+};
+
+// @public (undocumented)
+export type ProcessTokenExchangeArgs = {
+    requestedSubject: string;
+    subjectToken: string;
     skipUserInfo?: boolean;
     extraTokenParams?: Record<string, unknown>;
 };
@@ -938,6 +948,9 @@ export interface StateStore {
 }
 
 // @public (undocumented)
+export type TokenExchangeArgs = Omit<ProcessTokenExchangeArgs, "subjectToken">;
+
+// @public (undocumented)
 export class User {
     constructor(args: {
         id_token?: string;
@@ -1061,6 +1074,7 @@ export class UserManager {
     stopSilentRenew(): void;
     // (undocumented)
     storeUser(user: User | null): Promise<void>;
+    tokenExchange({ requestedSubject, skipUserInfo, }: TokenExchangeArgs): Promise<User>;
     // (undocumented)
     protected _useRefreshToken(args: UseRefreshTokenArgs): Promise<User>;
     // (undocumented)

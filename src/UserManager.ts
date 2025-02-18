@@ -3,8 +3,25 @@
 
 import { CryptoUtils, Logger } from "./utils";
 import { ErrorResponse } from "./errors";
-import { type NavigateResponse, type PopupWindowParams, type IWindow, type IFrameWindowParams, type RedirectParams, RedirectNavigator, PopupNavigator, IFrameNavigator, type INavigator } from "./navigators";
-import { OidcClient, type CreateSigninRequestArgs, type CreateSignoutRequestArgs, type ProcessResourceOwnerPasswordCredentialsArgs, type UseRefreshTokenArgs } from "./OidcClient";
+import {
+    IFrameNavigator,
+    type IFrameWindowParams,
+    type INavigator,
+    type IWindow,
+    type NavigateResponse,
+    PopupNavigator,
+    type PopupWindowParams,
+    RedirectNavigator,
+    type RedirectParams,
+} from "./navigators";
+import {
+    type CreateSigninRequestArgs,
+    type CreateSignoutRequestArgs,
+    OidcClient,
+    type ProcessResourceOwnerPasswordCredentialsArgs,
+    type ProcessTokenExchangeArgs,
+    type UseRefreshTokenArgs,
+} from "./OidcClient";
 import { type UserManagerSettings, UserManagerSettingsStore } from "./UserManagerSettings";
 import { User } from "./User";
 import { UserManagerEvents } from "./UserManagerEvents";
@@ -15,7 +32,7 @@ import type { SignoutResponse } from "./SignoutResponse";
 import type { MetadataService } from "./MetadataService";
 import { RefreshState } from "./RefreshState";
 import type { SigninResponse } from "./SigninResponse";
-import type { ExtraHeader, DPoPSettings } from "./OidcClientSettings";
+import type { DPoPSettings, ExtraHeader } from "./OidcClientSettings";
 import { DPoPState } from "./DPoPStore";
 
 /**
@@ -51,6 +68,11 @@ export type SigninSilentArgs = IFrameWindowParams & ExtraSigninRequestArgs;
  * @public
  */
 export type SigninResourceOwnerCredentialsArgs = ProcessResourceOwnerPasswordCredentialsArgs;
+
+/**
+ * @public
+ */
+export type TokenExchangeArgs = Omit<ProcessTokenExchangeArgs, "subjectToken">;
 
 /**
  * @public
@@ -198,8 +220,7 @@ export class UserManager {
         const user = await this._signinEnd(url);
         if (user.profile && user.profile.sub) {
             logger.info("success, signed in subject", user.profile.sub);
-        }
-        else {
+        } else {
             logger.info("no subject");
         }
 
@@ -347,12 +368,44 @@ export class UserManager {
         if (user) {
             if (user.profile?.sub) {
                 logger.info("success, signed in subject", user.profile.sub);
-            }
-            else {
+            } else {
                 logger.info("no subject");
             }
         }
 
+        return user;
+    }
+
+    /**
+     * Trigger the token exchange.
+     *
+     * @returns A promise containing the authenticated `User`.
+     * @throws {@link ErrorResponse} In cases of wrong authentication.
+     */
+    public async tokenExchange({
+        requestedSubject,
+        skipUserInfo = false,
+    }: TokenExchangeArgs): Promise<User> {
+        const logger = this._logger.create("tokenExchange");
+        const currentUser = await this.getUser();
+        if (currentUser == null) {
+            throw new Error("no current user present");
+        }
+
+        const signinResponse = await this._client.processTokenExchange({
+            requestedSubject,
+            subjectToken: currentUser.access_token,
+            skipUserInfo,
+            extraTokenParams: this.settings.extraTokenParams,
+        });
+        logger.debug("got token exchange response");
+
+        const user = await this._buildUser(signinResponse);
+        if (user.profile && user.profile.sub) {
+            logger.info("success, signed in subject", user.profile.sub);
+        } else {
+            logger.info("no subject");
+        }
         return user;
     }
 
@@ -740,7 +793,7 @@ export class UserManager {
         // don't Promise.all, order matters
         for (const type of typesPresent) {
             await this._client.revokeToken(
-                user[type]!,  
+                user[type]!,
                 type,
             );
             logger.info(`${type} revoked successfully`);

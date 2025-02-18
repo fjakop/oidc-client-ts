@@ -65,6 +65,16 @@ export type ProcessResourceOwnerPasswordCredentialsArgs = {
 };
 
 /**
+ * @public
+ */
+export type ProcessTokenExchangeArgs = {
+    requestedSubject: string;
+    subjectToken: string;
+    skipUserInfo?: boolean;
+    extraTokenParams?: Record<string, unknown>;
+};
+
+/**
  * Provides the raw OIDC/OAuth2 protocol support for the authorization endpoint and the end session endpoint in the
  * authorization server. It provides a bare-bones protocol implementation and is used by the UserManager class.
  * Only use this class if you simply want protocol support without the additional management features of the
@@ -242,6 +252,19 @@ export class OidcClient {
         extraTokenParams = {},
     }: ProcessResourceOwnerPasswordCredentialsArgs): Promise<SigninResponse> {
         const tokenResponse: Record<string, unknown> = await this._tokenClient.exchangeCredentials({ username, password, ...extraTokenParams });
+        const signinResponse: SigninResponse = new SigninResponse(new URLSearchParams());
+        Object.assign(signinResponse, tokenResponse);
+        await this._validator.validateCredentialsResponse(signinResponse, skipUserInfo);
+        return signinResponse;
+    }
+
+    public async processTokenExchange({
+        requestedSubject,
+        subjectToken,
+        skipUserInfo = false,
+        extraTokenParams = {},
+    }: ProcessTokenExchangeArgs): Promise<SigninResponse> {
+        const tokenResponse: Record<string, unknown> = await this._tokenClient.exchangeTokenExchange({ requested_subject: requestedSubject, subject_token: subjectToken, ...extraTokenParams });
         const signinResponse: SigninResponse = new SigninResponse(new URLSearchParams());
         Object.assign(signinResponse, tokenResponse);
         await this._validator.validateCredentialsResponse(signinResponse, skipUserInfo);

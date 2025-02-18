@@ -64,6 +64,21 @@ export interface RevokeArgs {
 /**
  * @internal
  */
+export interface ExchangeTokenExchangeArgs {
+    client_id?: string;
+    client_secret?: string;
+    redirect_uri?: string;
+
+    grant_type?: string;
+    subject_token: string;
+    requested_subject: string;
+
+    extraHeaders?: Record<string, ExtraHeader>;
+}
+
+/**
+ * @internal
+ */
 export class TokenClient {
     private readonly _logger = new Logger("TokenClient");
     private readonly _jsonService;
@@ -284,4 +299,72 @@ export class TokenClient {
         await this._jsonService.postForm(url, { body: params, timeoutInSeconds: this._settings.requestTimeoutInSeconds });
         logger.debug("got response");
     }
+
+    /**
+     * Exchange token exchange.
+     *
+     * @see https://www.rfc-editor.org/rfc/rfc8693
+     */
+    public async exchangeTokenExchange({
+        grant_type = "urn:ietf:params:oauth:grant-type:token-exchange",
+        redirect_uri = this._settings.redirect_uri,
+        client_id = this._settings.client_id,
+        client_secret = this._settings.client_secret,
+        extraHeaders,
+        ...args
+    }: ExchangeTokenExchangeArgs): Promise<Record<string, unknown>> {
+        const logger = this._logger.create("exchangeCode");
+        if (!client_id) {
+            logger.throw(new Error("A client_id is required"));
+        }
+        if (!redirect_uri) {
+            logger.throw(new Error("A redirect_uri is required"));
+        }
+        if (!args.requested_subject) {
+            logger.throw(new Error("A requested subject is required"));
+        }
+        if (!args.subject_token) {
+            logger.throw(new Error("A subject token is required"));
+        }
+
+        const params = new URLSearchParams({ grant_type, redirect_uri, requested_subject: args.requested_subject, subject_token: args.subject_token });
+        for (const [key, value] of Object.entries(args)) {
+            if (value != null) {
+                params.set(key, value);
+            }
+        }
+        let basicAuth: string | undefined;
+        switch (this._settings.client_authentication) {
+            case "client_secret_basic":
+                if (client_secret === undefined || client_secret === null) {
+                    logger.throw(new Error("A client_secret is required"));
+                    // eslint-disable-next-line @typescript-eslint/only-throw-error
+                    throw null; // https://github.com/microsoft/TypeScript/issues/46972
+                }
+                basicAuth = CryptoUtils.generateBasicAuth(client_id, client_secret);
+                break;
+            case "client_secret_post":
+                params.append("client_id", client_id);
+                if (client_secret) {
+                    params.append("client_secret", client_secret);
+                }
+                break;
+        }
+
+        const url = await this._metadataService.getTokenEndpoint(false);
+        logger.debug("got token endpoint");
+
+        const response = await this._jsonService.postForm(url, {
+            body: params,
+            basicAuth,
+            timeoutInSeconds: this._settings.requestTimeoutInSeconds,
+            initCredentials: this._settings.fetchRequestCredentials,
+            extraHeaders,
+        });
+
+        logger.debug("got response");
+
+        return response;
+    }
+
 }
